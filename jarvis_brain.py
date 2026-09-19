@@ -19,11 +19,21 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from openai import OpenAI, APIStatusError, APIConnectionError
 
+import CanvasAgent
+
 # GLOBAL VARIABLES & VARIABLE INIT
 DB_PATH = "memories.db"
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 model = WhisperModel("base", device="cpu", compute_type="int8")
 speech_mode = False
+
+agent1 = None
+agent2 = None
+agent3 = None
+agent4 = None
+agents = {1: agent1, 2: agent2, 3: agent3, 4: agent4}
+agentTypes = {"canvas": CanvasAgent.CanvasAgent}
+
 AVAILABLE_FUNCTIONS = {
     "retrieve_memories": lambda args: retrieve_memories(args.get("query"), args.get("top_k")),
     "save_memory": lambda args: save_memory(args.get("memory_type"), args.get("content"), args.get("importance")),
@@ -31,8 +41,6 @@ AVAILABLE_FUNCTIONS = {
     "get_calendar_events": lambda args: get_calendar_events(args.get("calendarId"), args.get("numDays")),
     "post_calendar_event": lambda args: post_calendar_event(args.get("calendarId"), args.get("title"), args.get("description"), args.get("start"), args.get("end"), args.get("recurrence", None)),
     "delete_calendar_event": lambda args: delete_calendar_event(args.get("calendarId"), args.get("eventId")),
-    "get_canvas_courses": lambda args: get_canvas_courses(os.environ.get("CANVAS_TOKEN")),
-    "get_canvas_assignments": lambda args: get_canvas_assignments(os.environ.get("CANVAS_TOKEN"), args.get("courseId")),
     "toggle_speech_mode": lambda args: toggle_speech_mode(),
     "get_time": lambda args: get_time(),
     "get_bus_stops": lambda args: get_bus_stops(),
@@ -182,7 +190,7 @@ def retrieve_memories(query, top_k):
             "memory_type": types[i],
             "importance": importances[i],
         }
-        for i in top_indices if sims > min_similarity
+        for i in top_indices
     ]
 
 def save_memory(memory_type, content, importance):
@@ -193,7 +201,7 @@ def save_memory(memory_type, content, importance):
     conn.close()
     print(f"Saved memory: {content}")
 
-# TOOL FUNCTIONS
+# NEW TOOL FUNCTIONS
 
 def get_tools():
     tools = [
@@ -340,35 +348,6 @@ def get_tools():
         {
             "type": "function",
             "function": {
-                "name": "get_canvas_courses",
-                "description": "Retrieve all canvas courses that the user has access to",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_canvas_assignments",
-                "description": "Get a list of assignments for a specific canvas course",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "courseId": {
-                            "type": "string",
-                            "description": "The ID of the course in which you want to view the assignements"
-                        }
-                    },
-                    "required": ["courseId"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "toggle_speech_mode",
                 "description": "Toggles the TTS and SST speech mode on or off",
                 "parameters": {
@@ -425,6 +404,28 @@ def get_tools():
         },
     ]
     return tools if tools != {} else None
+
+def createAgent(agentNum, agentType, message):
+    if(agentNum < 0 or agentNum > 4): return f"Invalid Agent Num: Available Agents: 1-{len(agents)}"
+    agents[agentNum] = agentTypes[agentType]()
+    return f"Sucessfully made agent {agentNum} a {agentType} agent!", agents[agentNum].doTask(message)
+
+def messageAgent(agentNum, message):
+    return agents[agentNum].doTask(message)
+
+def statusAgent(agentNum):
+    return agents[agentNum].getStatus() if agents[agentNum] != None else "Agent is not Initialized"
+
+
+# OLD TOOL FUNCTIONS ------TO BE REPLACED
+
+def fileRead(fileName):
+    with open(fileName, "r", encoding="utf-8") as f:
+        return f.read().strip()
+
+def fileWrite(fileName, content):
+    with open(fileName, "w", encoding="utf-8") as f:
+        return f.write(content)
 
 def get_all_pages(url, params, headers):
     results = []
@@ -532,58 +533,6 @@ def delete_calendar_event(calendarId, eventId):
 
     requests.delete(url=url, headers=headers)
     return f"Successfully deleted event {eventId} from calendar {calendarId}"
-
-
-def get_canvas_courses(canvas_token):
-    url = "https://canvas.wisc.edu/api/v1/courses?enrollment_state=active&per_page=100"
-    headers = {"Authorization": f"Bearer {canvas_token}"}
-    raw_classes = requests.get(url=url, headers=headers).json()
-    classes = []
-
-    for course in raw_classes:
-        classes.append({
-            "id": course.get("id"),
-            "name": course.get("name"),
-        })
-    return classes
-
-def get_canvas_assignments(canvas_token, courseId):
-    url = f"https://canvas.wisc.edu/api/v1/courses/{courseId}/assignments?include[]=can_submit&per_page=100"
-    headers = {"Authorization": f"Bearer {canvas_token}"}
-    raw_assignments = get_all_pages(url=url, params=None, headers=headers)
-    assignments = []
-
-    for assignment in raw_assignments:
-        assignments.append({
-            "id": assignment.get("id"),
-            "name": assignment.get("name"),
-            "description": assignment.get("description"),
-            "due_at": assignment.get("due_at"),
-            "html_url": assignment.get("html_url"),
-            "can_submit": assignment.get("can_submit"),
-            "submission": assignment.get("submission")
-            
-        })
-    return assignments
-
-def get_canvas_planner(canvas_token, courseId):
-    url = "https://canvas.wisc.edu/planner/items"
-    headers = {"Authorization": f"Bearer {canvas_token}"}
-    raw_assignments = get_all_pages(url=url, params=None, headers=headers)
-    assignments = []
-
-    for assignment in raw_assignments:
-        assignments.append({
-            "id": assignment.get("id"),
-            "name": assignment.get("name"),
-            "description": assignment.get("description"),
-            "due_at": assignment.get("due_at"),
-            "html_url": assignment.get("html_url"),
-            "can_submit": assignment.get("can_submit"),
-            "submission": assignment.get("submission")
-            
-        })
-    return assignments
 
 
 def toggle_speech_mode():

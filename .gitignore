@@ -1,5 +1,11 @@
 CREDENTIALS/
 MEMORY_INFO/
 .bat
+.env
 to-do.txt
 recording.wav
+memories.db
+credentials.json
+stop_times.txt
+stops.txt
+token.json
