@@ -35,6 +35,7 @@ agents = {1: agent1, 2: agent2, 3: agent3, 4: agent4}
 agentTypes = {"canvas": CanvasAgent.CanvasAgent}
 
 AVAILABLE_FUNCTIONS = {
+    #OLD TOOL FUNCTIONS
     "retrieve_memories": lambda args: retrieve_memories(args.get("query"), args.get("top_k")),
     "save_memory": lambda args: save_memory(args.get("memory_type"), args.get("content"), args.get("importance")),
     "get_calendars": lambda args: get_calendars(),
@@ -44,7 +45,12 @@ AVAILABLE_FUNCTIONS = {
     "toggle_speech_mode": lambda args: toggle_speech_mode(),
     "get_time": lambda args: get_time(),
     "get_bus_stops": lambda args: get_bus_stops(),
-    "get_bus_times": lambda args: get_bus_times(args.get("depart_id"), args.get("arrive_id"))
+    "get_bus_times": lambda args: get_bus_times(args.get("depart_id"), args.get("arrive_id")),
+
+    # NEW TOOL FUNCTIONS
+    "createAgent": lambda args: createAgent(args.get("agentNum"), args.get("agentType"), args.get("message")),
+    "messageAgent": lambda args: messageAgent(args.get("agentNum"), args.get("message")),
+    "statusAgent": lambda args: statusAgent(args.get("agentNum"))
 }
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
@@ -160,7 +166,7 @@ def transcribe(FILEPATH):
 #MEMORY FUNCTIONS
 
 def buildSystemPrompt():
-    with open("systemPrompt.txt", "r", encoding="utf-8") as f:
+    with open("jarvisPrompt.txt", "r", encoding="utf-8") as f:
         return f"Today is {datetime.datetime.now()}. {f.read().strip()}"
 
 def embed(text):
@@ -402,18 +408,89 @@ def get_tools():
                 },
             }
         },
+
+        #NEW TOOL FUNCTIONS
+
+        {
+            "type": "function",
+            "function": {
+                "name": "createAgent",
+                "description": """Creates a Sub Agent to delegate tasks and sends its first message. Each Sub Agent type has specific tools they can utilize. "
+                    You have space for 4 Agents, these can be the same or different Types. You can create an agent over an existing one to reinitialize to a new agent.
+                    Returns the confirmation of Agent creation and the agent response""",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "agentNum": {
+                            "type": "integer",
+                            "description": "The agent you wish to initialize or reinitialize. Agents available are '1', '2', '3', '4'"
+                        },
+                        "agentType": {
+                            "type": "string",
+                            "description": "The Type of agent you wish to create. This determines the tools and systemPrompt it recieves. Agent types available are 'canvas'"
+                        },
+                        "message": {
+                            "type": "string",
+                            "description": """The first message you wish to send to the new Agent. The Agent will Automatically recieve a system prompt and a 'Hello, I am Jarvis' message from you.
+                                This message can be a general request, an elaboration on the system prompt, or something else."""
+                        },
+                    },
+                    "required":["agentNum", "agentType", "message"]  
+                },
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "messageAgent",
+                "description": "Sends a Message to an existing initialized agent. Each Sub Agent type has specific tools they can utilize. Returns the SubAgent's Response",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "agentNum": {
+                            "type": "integer",
+                            "description": "The agent you wish to initialize or reinitialize. Agents available are '1', '2', '3', '4'"
+                        },
+                        "message": {
+                            "type": "string",
+                            "description": "The  message you wish to send to the Agent."
+                        },
+                    },
+                    "required":["agentNum", "message"]  
+                },
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "statusAgent",
+                "description": "Retreives the status of an Agent. It will retreive the agent's type and message log if it is initialized",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "agentNum": {
+                            "type": "integer",
+                            "description": "The agent you wish to initialize or reinitialize. Agents available are '1', '2', '3', '4'"
+                        }
+                    },
+                    "required":["agentNum"]  
+                },
+            }
+        },
     ]
     return tools if tools != {} else None
 
 def createAgent(agentNum, agentType, message):
-    if(agentNum < 0 or agentNum > 4): return f"Invalid Agent Num: Available Agents: 1-{len(agents)}"
+    if(agentNum < 1 or agentNum > 4): return f"Invalid Agent Num: Available Agents: 1-{len(agents)}"
     agents[agentNum] = agentTypes[agentType]()
-    return f"Sucessfully made agent {agentNum} a {agentType} agent!", agents[agentNum].doTask(message)
+    return f"Sucessfully made agent {agentNum} a {agentType} agent! Response: {agents[agentNum].doTask(message)}"
 
 def messageAgent(agentNum, message):
-    return agents[agentNum].doTask(message)
+    if(agentNum < 1 or agentNum > 4): return f"Invalid Agent Num: Available Agents: 1-{len(agents)}"
+    return agents[agentNum].doTask(message) if agents[agentNum] != None else "Agent is not Initialized"
 
 def statusAgent(agentNum):
+    if(agentNum < 1 or agentNum > 4): return f"Invalid Agent Num: Available Agents: 1-{len(agents)}"
     return agents[agentNum].getStatus() if agents[agentNum] != None else "Agent is not Initialized"
 
 

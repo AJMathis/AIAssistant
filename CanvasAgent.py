@@ -30,13 +30,12 @@ class CanvasAgent:
             return f"Today is {datetime.datetime.now()}. {f.read().strip()}"
 
     def try_again_loop(self, func):
-        max_attempts = 4
+        max_attempts = 3
         time_increase = 2
-        for attempt in range(max_attempts):
+        for attempt in range(max_attempts+1):
             wait_time = 2 * attempt
-            if(attempt == 3):
-                print("Failed to reach server. Out of Attempts.")
-                return None
+            if(attempt == max_attempts):
+                raise RuntimeError("Failed to reach server. Out of Attempts.")
             try:
                 result = func()
                 return result
@@ -191,7 +190,11 @@ class CanvasAgent:
     
     def doTask(self, message):
         self.messages.append({"role": "system", "content": f"{message}"})
-        msg, self.messages = self.try_again_loop(lambda: self.send_messages(client=self.client, messages=self.messages, tools=self.tools))
+        try:
+            msg, self.messages = self.try_again_loop(lambda: self.send_messages(client=self.client, messages=self.messages, tools=self.tools))
+        except RuntimeError as e:
+            return(f"Unable to send message: {e} Please try again.")
+
         return(f"canvasAgent: {msg}")
 
     
